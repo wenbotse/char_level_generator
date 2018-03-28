@@ -10,24 +10,13 @@ from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 from keras.utils import np_utils
 from keras import optimizers
 import keras
-from keras import layers
+import gc
 from keras.callbacks import TensorBoard
+from keras import layers
 
-df=pd.read_csv('../../dataset/five_star_restaurants_reviews_only.csv')
-len(df)
-df = df.replace({r'\+': ''}, regex=True)
-#train on shorter reviews.  Already lots of data, easier to train on shorter ones too
-mask = (df['text'].str.len() < 251) 
-df2 = df.loc[mask]
-len(df2)
-#shuffle the order of the reviews so we don't train on 100 Subway ones in a row
-short_reviews=df2.sample(frac=1).reset_index(drop=True)
+train_data = '../../dataset/short_comment.txt'
 
-#only run this the first time, it will save a txt file on your computer
-filename='../../dataset/short_reviews_shuffle.txt'
-short_reviews.to_csv(filename, header=None, index=None, sep=' ')
-
-text = open('../../dataset/short_reviews_shuffle.txt').read()
+text = open(train_data).read()
 print('Corpus length:', len(text))
 
 # List of unique characters in the corpus
@@ -36,15 +25,15 @@ print('Unique characters:', len(chars))
 # Dictionary mapping unique characters to their index in `chars`
 char_indices = dict((char, chars.index(char)) for char in chars)
 
-maxlen=60
+maxlen=30
 step=1
 
-char_indices
+print(char_indices)
 
 #This get Data From Chunk is necessary to process large data sets like the one we have
 #If you're using a sample less than 1 million characters you can train the whole thing at once
 
-def getDataFromChunk(txtChunk, maxlen=60, step=1):
+def getDataFromChunk(txtChunk, maxlen=30, step=1):
     sentences = []
     next_chars = []
     for i in range(0, len(txtChunk) - maxlen, step):
@@ -55,17 +44,19 @@ def getDataFromChunk(txtChunk, maxlen=60, step=1):
     X = np.zeros((len(sentences), maxlen, len(chars)), dtype=np.bool)
     y = np.zeros((len(sentences), len(chars)), dtype=np.bool)
     for i, sentence in enumerate(sentences):
-        print('getDataFromChunk='+sentence)
+       # print('getDataFromChunk='+sentence)
         for t, char in enumerate(sentence):
             X[i, t, char_indices[char]] = 1
             y[i, char_indices[next_chars[i]]] = 1
     return [X, y]
 
-chunk = 'Always love this place and the prices are very reasonable! I am never disappointed. This get Data From Chunk is necessary to process large data sets like the one we have.'
+chunk = '多次来了，非常喜欢！小炒肉很入味，汽锅鸡清鲜可口，茉莉花炒鸡蛋是我的最爱！火腿小麦瓜也不错。米布每次都点，很滑嫩。菠萝饭香糯美味。服务员态度很好，上菜快，服务周到。'
 #x,y = getDataFromChunk(chunk)
 len(chunk)
 
 model = keras.models.Sequential()
+model.add(layers.LSTM(1024, input_shape=(maxlen, len(chars)),return_sequences=True))
+model.add(layers.LSTM(1024, input_shape=(maxlen, len(chars)),return_sequences=True))
 model.add(layers.LSTM(1024, input_shape=(maxlen, len(chars)),return_sequences=True))
 model.add(layers.LSTM(1024, input_shape=(maxlen, len(chars))))
 model.add(layers.Dense(len(chars), activation='softmax'))
@@ -75,11 +66,11 @@ optimizer = keras.optimizers.Adam(lr=0.001)
 model.compile(loss='categorical_crossentropy', optimizer=optimizer)
 
 # this saves the weights everytime they improve so you can let it train.  Also learning rate decay
-filepath="Feb-22-all-{epoch:02d}-{loss:.4f}.hdf5"
-checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=True, mode='min')
+filepath="Feb-22-all-deep-{epoch:03d}-{loss:.4f}.hdf5"
+checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=False, mode='min')
 reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.5,
               patience=1, min_lr=0.00001)
-callbacks_list = [checkpoint,reduce_lr]
+callbacks_list = [checkpoint, reduce_lr, TensorBoard(log_dir='./log')]
 
 def sample(preds, temperature=1.0):
     '''
@@ -116,15 +107,17 @@ def sample(preds, temperature=1.0):
 #This trains the model batching from the text file
 #every epoch it prints out 300 characters at different "temperatures"
 #temperature controls how random the characters sample: more temperature== more crazy (but often better) text
-for iteration in range(1, 20):
+for iteration in range(1, 200):
     print()
     print('-' * 50)
     print('Iteration', iteration)
-    with open("../../dataset/short_reviews_shuffle.txt") as f:
+    with open(train_data) as f:
         for chunk in iter(lambda: f.read(90000), ""):
             X, y = getDataFromChunk(chunk)
-            model.fit(X, y, batch_size=128, epochs=1, callbacks=callbacks_list)
-    
+            model.fit(X, y, batch_size=1024, epochs=1, callbacks=callbacks_list)
+            del X
+            del y
+            gc.collect() 
      # Select a text seed at random
     start_index = random.randint(0, len(text) - maxlen - 1)
     generated_text = text[start_index: start_index + maxlen]

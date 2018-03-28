@@ -15,7 +15,11 @@ import gc
 from keras import layers
 from keras.callbacks import TensorBoard
 
-text = open('../../dataset/comment.txt').read()
+
+
+train_data = '../../dataset/short_comment.txt'
+
+text = open(train_data).read()
 print('Corpus length:', len(text))
 
 # List of unique characters in the corpus
@@ -24,7 +28,7 @@ print('Unique characters:', len(chars))
 # Dictionary mapping unique characters to their index in `chars`
 char_indices = dict((char, chars.index(char)) for char in chars)
 
-maxlen=60
+maxlen=30
 step=1
 
 print(char_indices)
@@ -32,7 +36,7 @@ print(char_indices)
 #This get Data From Chunk is necessary to process large data sets like the one we have
 #If you're using a sample less than 1 million characters you can train the whole thing at once
 
-def getDataFromChunk(txtChunk, maxlen=60, step=1):
+def getDataFromChunk(txtChunk, maxlen=30, step=1):
     sentences = []
     next_chars = []
     for i in range(0, len(txtChunk) - maxlen, step):
@@ -57,9 +61,9 @@ model = keras.models.Sequential()
 model.add(layers.LSTM(1024, input_shape=(maxlen, len(chars)),return_sequences=True))
 model.add(layers.LSTM(1024, input_shape=(maxlen, len(chars))))
 model.add(layers.Dense(len(chars), activation='softmax'))
-#model.load_weights("Feb-22-all-00-0.8265.hdf5")
+#model.load_weights("Feb-22-all-001-5.9226.hdf5")
 
-optimizer = keras.optimizers.Adam(lr=0.001)
+optimizer = keras.optimizers.Adam(lr=0.003)
 model.compile(loss='categorical_crossentropy', optimizer=optimizer)
 
 # this saves the weights everytime they improve so you can let it train.  Also learning rate decay
@@ -67,7 +71,7 @@ filepath="Feb-22-all-{epoch:03d}-{loss:.4f}.hdf5"
 checkpoint = ModelCheckpoint(filepath, monitor='loss', verbose=1, save_best_only=False, mode='min')
 reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.5,
               patience=1, min_lr=0.00001)
-callbacks_list = [checkpoint, TensorBoard(log_dir='./log')]
+callbacks_list = [checkpoint, reduce_lr, TensorBoard(log_dir='./log')]
 
 def sample(preds, temperature=1.0):
     '''
@@ -108,10 +112,10 @@ for iteration in range(1, 200):
     print()
     print('-' * 50)
     print('Iteration', iteration)
-    with open("../../dataset/comment.txt") as f:
+    with open(train_data) as f:
         for chunk in iter(lambda: f.read(90000), ""):
             X, y = getDataFromChunk(chunk)
-            model.fit(X, y, batch_size=128, epochs=1, callbacks=callbacks_list)
+            model.fit(X, y, batch_size=1024, epochs=1, callbacks=callbacks_list)
             del X
             del y
             gc.collect() 
